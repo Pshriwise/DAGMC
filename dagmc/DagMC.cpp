@@ -236,8 +236,8 @@ ErrorCode DagMC::init_OBBTree() {
   MB_CHK_SET_ERR(rval, "Failed to setup the implicit compliment");
 
   // build obbs
-  // rval = setup_obbs();
-  //MB_CHK_SET_ERR(rval, "Failed to setup the OBBs");
+  rval = setup_obbs();
+  MB_CHK_SET_ERR(rval, "Failed to setup the OBBs");
 
   // setup indices
   rval = setup_indices();
@@ -248,7 +248,7 @@ ErrorCode DagMC::init_OBBTree() {
   rval = MBVH->build_all();
   MB_CHK_SET_ERR(rval, "Failed to build the BVH");
 #endif
-  
+
   return MB_SUCCESS;
 }
 
@@ -311,7 +311,7 @@ ErrorCode DagMC::ray_fire(const EntityHandle volume, const double point[3],
   ErrorCode rval;
 
 #ifdef SIMD_BVH
-  
+
   MBRay ray(point, dir);
   ray.instID = volume;
   if(ray_orientation == 1) {
@@ -346,13 +346,13 @@ ErrorCode DagMC::ray_fire(const EntityHandle volume, const double point[3],
   }
 
   if( history ) {
-    history->prev_facets.push_back(ray.primID);
+    history->add_entity(ray.primID);
   }
-  
+
   return rval;
-  
+
 #endif
-  
+
   rval = GQT->ray_fire(volume, point, dir, next_surf, next_surf_dist,
                                   history, user_dist_limit, ray_orientation,
                                   stats);
@@ -370,10 +370,10 @@ ErrorCode DagMC::point_in_volume(const EntityHandle volume, const double xyz[3],
   if ( uvw ) {
     dir[0] = uvw[0]; dir[1] = uvw[1]; dir[2] = uvw[2];
   }
-			
+
   if( dir[0] == 0 && dir[1] == 0 && dir[2] == 0 )
     {
-      srand(51);    
+      srand(51);
       dir[0] = rand();
       dir[1] = rand();
       dir[2] = rand();
@@ -383,7 +383,7 @@ ErrorCode DagMC::point_in_volume(const EntityHandle volume, const double xyz[3],
       dir[2] /= magnitude;
     }
 
-  
+
   MBRay ray(xyz, dir);
   ray.instID = volume;
   MBVH->MOABBVH->unset_filter();
@@ -422,22 +422,22 @@ ErrorCode DagMC::point_in_volume(const EntityHandle volume, const double xyz[3],
     aray.dir = aray.dir * -1;
     rval = MBVH->fireRay(aray);
     if (aray.num_hit == hits ) { result = 0; return rval; }
-    
+
     // inside/outside depends on the sum
     if      (0 < aray.sum)                                          result = 0; // pt is outside (for all vols)
     else if (0 > aray.sum)                                          result = 1; // pt is inside  (for all vols)
     else if ( GTT->is_implicit_complement(volume) )                 result = 1; // pt is inside  (for impl_compl_vol)
     else                                                            result = 0; // pt is outside (for all other vols)
   }
-  
+
   return rval;
 #endif
-  
+
   rval = GQT->point_in_volume(volume, xyz, result, uvw, history);
-  
+
   return rval;
 }
-  
+
 ErrorCode DagMC::test_volume_boundary(const EntityHandle volume,
                                       const EntityHandle surface,
                                       const double xyz[3], const double uvw[3],
@@ -459,7 +459,7 @@ ErrorCode DagMC::point_in_volume_slow(EntityHandle volume, const double xyz[3],
 ErrorCode DagMC::closest_to_location(EntityHandle volume,
                                      const double coords[3], double& result,
                                      EntityHandle* surface) {
-  
+
   ErrorCode rval = GQT->closest_to_location(volume, coords, result, surface);
   return rval;
 }
@@ -497,18 +497,19 @@ ErrorCode DagMC::get_angle(EntityHandle surf, const double in_pt[3],
   ErrorCode rval;
 #ifdef SIMD_BVH
 
-  if ( history && history->prev_facets.size() ){
+  if ( history && history->size() ){
     CartVect coords[3], normal(0.0);
     const EntityHandle* conn;
     int len = 0;
-    EntityHandle facet = history->prev_facets.back();
-    
+    EntityHandle facet;
+    history->get_last_intersection(facet);
+
     rval = MBI->get_connectivity( facet, conn, len );
     MB_CHK_SET_ERR(rval, "Failed to get facet connectivity");
     if(3 != len) {
       MB_SET_ERR(MB_FAILURE, "Incorrect connectivity length for triangle");
     }
- 
+
     rval = MBI->get_coords( conn, 3, coords[0].array() );
     MB_CHK_SET_ERR(rval, "Failed to get vertex coordinates");
 
@@ -521,19 +522,19 @@ ErrorCode DagMC::get_angle(EntityHandle surf, const double in_pt[3],
 
     return MB_SUCCESS;
   }
-  
+
   MBRay ray(in_pt, {0.0, 0.0, 0.0});
-  ray.geomID = surf;  
+  ray.geomID = surf;
   rval = MBVH->closestToLocationSurf(ray);
 
-  
+
   angle[0] = ray.Ng[0];
   angle[1] = ray.Ng[1];
   angle[2] = ray.Ng[2];
-  
+
   return MB_SUCCESS;
 #endif
-  
+
   rval = GQT->get_normal(surf, in_pt, angle, history);
   return rval;
 }
